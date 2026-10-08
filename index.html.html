@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktif Worksheet (LiveWorksheet Clone)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .pdf-page-container {
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .field-container {
+            position: absolute;
+            z-index: 10;
+        }
+        .field-overlay {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            border: 1px dashed transparent;
+            border-radius: 2px;
+            overflow: hidden;
+            color: #0f172a; 
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            font-weight: normal;
+            resize: none;
+            padding: 2px 4px;
+            line-height: 1.25;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .field-overlay:focus, .field-container:hover .field-overlay, .field-container:focus-within .field-overlay {
+            background-color: rgba(219, 234, 254, 0.4);
+            border: 1px dashed #3b82f6;
+            outline: none;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            background-color: #3b82f6;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            z-index: 20;
+            display: none;
+            border: 1px solid white;
+        }
+        .field-container:hover .resize-handle,
+        .field-container:focus-within .resize-handle {
+            display: block;
+        }
+        
+        .handle-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+        .handle-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+        .handle-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+        .handle-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+        .handle-n { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .handle-e { top: 50%; right: -4px; transform: translateY(-50%); cursor: ew-resize; }
+        .handle-w { top: 50%; left: -4px; transform: translateY(-50%); cursor: ew-resize; }
+        
+        .delete-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            line-height: 16px;
+            text-align: center;
+            cursor: pointer;
+            z-index: 25;
+            display: none;
+        }
+        .field-container:hover .delete-btn {
+            display: block;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">W</div>
+                <h1 class="text-xl font-bold text-slate-800">LiveWorksheet Maker</h1>
+            </div>
+            
+            <div id="controls-area" class="hidden flex flex-wrap items-center gap-3">
+                <button id="btn-download" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Kumpulkan & Unduh PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-8">
+        
+        <div id="notification" class="hidden mb-4 p-4 rounded-lg bg-green-100 text-green-800 text-sm font-medium transition-all"></div>
+
+        <div id="upload-area" class="border-2 border-dashed border-slate-300 rounded-xl bg-white p-12 text-center transition-all hover:bg-slate-50">
+            <svg class="mx-auto h-12 w-12 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <h3 class="mt-2 text-lg font-semibold text-slate-900">Unggah LKS / Worksheet PDF</h3>
+            <p class="mt-1 text-sm text-slate-500 mb-6">File PDF akan ditampilkan dan Anda bisa langsung mengetik di atasnya.</p>
+            <label class="cursor-pointer inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all">
+                Pilih File PDF
+                <input type="file" id="pdf-upload" accept="application/pdf" class="hidden">
+            </label>
+        </div>
+
+        <div id="instructions" class="hidden mb-6 bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg text-sm flex gap-3 items-start">
+            <svg class="w-5 h-5 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div>
+                <strong>Instruksi Pengisian:</strong><br>
+                Klik di bagian baris/kolom mana saja untuk menulis jawaban. Ukuran kotak dirancang pas mirip baris buku tulis, serta dapat diubah ukurannya dari segala sisi. Font menggunakan Arial 11pt.
+            </div>
+        </div>
+
+        <div id="pdf-viewer-container" class="hidden flex flex-col gap-6 items-center w-full pb-20">
+            <!-- Halaman PDF dirender dinamis di sini -->
+        </div>
+
+    </main>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let pdfDoc = null;
+        let fields = []; 
+        let pdfScale = 1.5;
+
+        const uploadInput = document.getElementById('pdf-upload');
+        const uploadArea = document.getElementById('upload-area');
+        const viewerContainer = document.getElementById('pdf-viewer-container');
+        const controlsArea = document.getElementById('controls-area');
+        const btnDownload = document.getElementById('btn-download');
+        const instructions = document.getElementById('instructions');
+        const notificationEl = document.getElementById('notification');
+
+        function showNotification(message, type = 'success') {
+            notificationEl.textContent = message;
+            notificationEl.className = `mb-4 p-4 rounded-lg text-sm font-medium transition-all block ${type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+            notificationEl.classList.remove('hidden');
+            setTimeout(() => {
+                notificationEl.classList.add('hidden');
+            }, 4000);
+        }
+
+        uploadInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                const fileReader = new FileReader();
+                fileReader.onload = function() {
+                    const typedarray = new Uint8Array(this.result);
+                    loadPDF(typedarray);
+                };
+                fileReader.readAsArrayBuffer(file);
+            } else {
+                showNotification('Silakan unggah file PDF yang valid.', 'error');
+            }
+        });
+
+        async function loadPDF(data) {
+            try {
+                pdfDoc = await pdfjsLib.getDocument(data).promise;
+                uploadArea.classList.add('hidden');
+                viewerContainer.classList.remove('hidden');
+                viewerContainer.classList.add('flex');
+                controlsArea.classList.remove('hidden');
+                controlsArea.classList.add('flex');
+                instructions.classList.remove('hidden');
+                
+                renderAllPages();
+            } catch (error) {
+                console.error("Error loading PDF:", error);
+                showNotification('Gagal memuat PDF.', 'error');
+            }
+        }
+
+        async function renderAllPages() {
+            viewerContainer.innerHTML = ''; 
+            
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                const page = await pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: pdfScale });
+
+                const pageContainer = document.createElement('div');
+                pageContainer.className = 'pdf-page-container';
+                pageContainer.dataset.page = pageNum;
+                pageContainer.style.width = `${viewport.width}px`;
+                pageContainer.style.height = `${viewport.height}px`;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+
+                const renderContext = { canvasContext: ctx, viewport: viewport };
+                await page.render(renderContext).promise;
+
+                const interactionLayer = document.createElement('div');
+                interactionLayer.className = 'absolute top-0 left-0 w-full h-full';
+                interactionLayer.style.zIndex = '5';
+                
+                interactionLayer.addEventListener('click', (e) => handlePageClick(e, pageNum, pageContainer));
+
+                pageContainer.appendChild(canvas);
+                pageContainer.appendChild(interactionLayer);
+                viewerContainer.appendChild(pageContainer);
+            }
+            
+            renderAllFields();
+        }
+
+        function handlePageClick(e, pageNum, container) {
+            if (e.target !== e.currentTarget) return; 
+            
+            const rect = container.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            const pctX = (clickX / rect.width) * 100;
+            const pctY = (clickY / rect.height) * 100;
+            
+            // Ukuran default pas seperti baris buku tulis (ringkas/pipih)
+            const defaultWidth = 20; 
+            const defaultHeight = 3.5;
+
+            const newField = {
+                id: 'field_' + Date.now(),
+                pageNum: pageNum,
+                x: pctX,
+                y: pctY,
+                width: defaultWidth,
+                height: defaultHeight,
+                value: ''
+            };
+
+            fields.push(newField);
+            renderField(newField, container, true);
+        }
+
+        function renderField(fieldData, container, autoFocus = false) {
+            const fieldWrapper = document.createElement('div');
+            fieldWrapper.className = 'field-container absolute';
+            fieldWrapper.id = fieldData.id;
+            
+            fieldWrapper.style.left = `${fieldData.x}%`;
+            fieldWrapper.style.top = `${fieldData.y}%`;
+            fieldWrapper.style.width = `${fieldData.width}%`;
+            fieldWrapper.style.height = `${fieldData.height}%`;
+
+            const textarea = document.createElement('textarea');
+            textarea.className = 'field-overlay w-full h-full';
+            textarea.value = fieldData.value;
+            textarea.placeholder = 'Ketik...';
+
+            textarea.addEventListener('blur', (e) => {
+                if (e.target.value.trim() === '') {
+                    fields = fields.filter(f => f.id !== fieldData.id);
+                    fieldWrapper.remove();
+                }
+            });
+
+            textarea.addEventListener('input', (e) => {
+                fieldData.value = e.target.value;
+            });
+
+            const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+            handles.forEach(pos => {
+                const handle = document.createElement('div');
+                handle.className = `resize-handle handle-${pos}`;
+                
+                const startDrag = (e) => {
+                    e.preventDefault(); 
+                    initResize(e, pos);
+                };
+
+                handle.addEventListener('mousedown', startDrag);
+                handle.addEventListener('touchstart', startDrag, {passive: false});
+                fieldWrapper.appendChild(handle);
+            });
+
+            function initResize(e, pos) {
+                e.stopPropagation();
+                
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                const startX = clientX;
+                const startY = clientY;
+                const startWidth = fieldWrapper.offsetWidth;
+                const startHeight = fieldWrapper.offsetHeight;
+                
+                const startLeft = fieldWrapper.offsetLeft; 
+                const startTop = fieldWrapper.offsetTop;
+                
+                const parentRect = container.getBoundingClientRect();
+
+                function doResize(eMove) {
+                    eMove.preventDefault(); 
+                    const moveX = eMove.touches ? eMove.touches[0].clientX : eMove.clientX;
+                    const moveY = eMove.touches ? eMove.touches[0].clientY : eMove.clientY;
+                    
+                    const dx = moveX - startX;
+                    const dy = moveY - startY;
+                    
+                    let newWidth = startWidth;
+                    let newHeight = startHeight;
+                    let newLeft = startLeft;
+                    let newTop = startTop;
+
+                    if (pos.includes('e')) newWidth = startWidth + dx;
+                    if (pos.includes('s')) newHeight = startHeight + dy;
+                    if (pos.includes('w')) {
+                        newWidth = startWidth - dx;
+                        newLeft = startLeft + dx;
+                    }
+                    if (pos.includes('n')) {
+                        newHeight = startHeight - dy;
+                        newTop = startTop + dy;
+                    }
+
+                    if (newWidth < 20) { 
+                        if (pos.includes('w')) newLeft = startLeft + (startWidth - 20); 
+                        newWidth = 20; 
+                    }
+                    if (newHeight < 15) { 
+                        if (pos.includes('n')) newTop = startTop + (startHeight - 15); 
+                        newHeight = 15; 
+                    }
+
+                    fieldData.width = (newWidth / parentRect.width) * 100;
+                    fieldData.height = (newHeight / parentRect.height) * 100;
+                    fieldData.x = (newLeft / parentRect.width) * 100;
+                    fieldData.y = (newTop / parentRect.height) * 100;
+
+                    fieldWrapper.style.width = `${fieldData.width}%`;
+                    fieldWrapper.style.height = `${fieldData.height}%`;
+                    fieldWrapper.style.left = `${fieldData.x}%`;
+                    fieldWrapper.style.top = `${fieldData.y}%`;
+                }
+
+                function stopResize() {
+                    document.removeEventListener('mousemove', doResize);
+                    document.removeEventListener('mouseup', stopResize);
+                    document.removeEventListener('touchmove', doResize);
+                    document.removeEventListener('touchend', stopResize);
+                    textarea.focus();
+                }
+
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+                document.addEventListener('touchmove', doResize, {passive: false});
+                document.addEventListener('touchend', stopResize);
+            }
+
+            const deleteBtn = document.createElement('div');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.title = 'Hapus kotak';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                fields = fields.filter(f => f.id !== fieldData.id);
+                fieldWrapper.remove();
+            });
+
+            fieldWrapper.appendChild(textarea);
+            fieldWrapper.appendChild(deleteBtn);
+            container.appendChild(fieldWrapper);
+
+            if (autoFocus) {
+                setTimeout(() => textarea.focus(), 10);
+            }
+        }
+
+        function renderAllFields() {
+            document.querySelectorAll('.field-container').forEach(el => el.remove());
+            fields.forEach(field => {
+                const container = document.querySelector(`.pdf-page-container[data-page="${field.pageNum}"]`);
+                if (container) {
+                    renderField(field, container);
+                }
+            });
+        }
+
+        btnDownload.addEventListener('click', async () => {
+            if (fields.length === 0) {
+                showNotification('Tidak ada isian untuk dicetak.', 'error');
+                return;
+            }
+
+            btnDownload.innerHTML = 'Memproses PDF...';
+            btnDownload.disabled = true;
+
+            const textareas = document.querySelectorAll('.field-overlay');
+            const originalStates = [];
+            
+            textareas.forEach(textarea => {
+                const parent = textarea.parentElement;
+                originalStates.push({ textarea, parent, html: textarea.outerHTML });
+                
+                const val = textarea.value;
+                const divFix = document.createElement('div');
+                divFix.className = 'field-overlay w-full h-full';
+                divFix.style.border = 'none';
+                divFix.style.backgroundColor = 'transparent';
+                divFix.style.outline = 'none';
+                divFix.style.fontFamily = 'Arial, sans-serif';
+                divFix.style.fontSize = '11pt';
+                divFix.style.lineHeight = '1.25';
+                divFix.style.padding = '2px 4px';
+                divFix.style.whiteSpace = 'pre-wrap';
+                divFix.style.wordBreak = 'break-word';
+                divFix.innerText = val;
+                
+                textarea.replaceWith(divFix);
+            });
+
+            const fieldContainers = document.querySelectorAll('.field-container');
+            fieldContainers.forEach(el => {
+                el.style.border = 'none';
+                const deleteBtn = el.querySelector('.delete-btn');
+                const handles = el.querySelectorAll('.resize-handle');
+                if (deleteBtn) deleteBtn.style.display = 'none';
+                handles.forEach(h => h.style.display = 'none');
+            });
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const a4Width = pdf.internal.pageSize.getWidth(); 
+                const a4Height = pdf.internal.pageSize.getHeight(); 
+
+                const pages = document.querySelectorAll('.pdf-page-container');
+
+                for (let i = 0; i < pages.length; i++) {
+                    const pageEl = pages[i];
+                    
+                    const originalShadow = pageEl.style.boxShadow;
+                    const originalRadius = pageEl.style.borderRadius;
+                    pageEl.style.boxShadow = 'none';
+                    pageEl.style.borderRadius = '0';
+
+                    const canvas = await html2canvas(pageEl, {
+                        scale: 2, 
+                        useCORS: true,
+                        logging: false,
+                        windowWidth: pageEl.scrollWidth,
+                        windowHeight: pageEl.scrollHeight
+                    });
+
+                    pageEl.style.boxShadow = originalShadow;
+                    pageEl.style.borderRadius = originalRadius;
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    
+                    const imgProps = pdf.getImageProperties(imgData);
+                    const ratio = imgProps.height / imgProps.width;
+                    
+                    let renderWidth = a4Width;
+                    let renderHeight = renderWidth * ratio;
+
+                    if (renderHeight > a4Height) {
+                        renderHeight = a4Height;
+                        renderWidth = renderHeight / ratio;
+                    }
+
+                    const x = (a4Width - renderWidth) / 2;
+                    const y = 0;
+
+                    if (i > 0) {
+                        pdf.addPage();
+                    }
+                    
+                    pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
+                }
+
+                pdf.save('Worksheet_Jawaban_Siswa.pdf');
+                showNotification('PDF berhasil diunduh dengan presisi A4!', 'success');
+                
+            } catch (error) {
+                console.error("Export error:", error);
+                showNotification('Terjadi kesalahan saat membuat PDF.', 'error');
+            } finally {
+                document.querySelectorAll('.field-container').forEach(el => {
+                    el.style.border = '';
+                    const deleteBtn = el.querySelector('.delete-btn');
+                    if (deleteBtn) deleteBtn.style.display = '';
+                });
+
+                originalStates.forEach(item => {
+                    const currentDiv = item.parent.querySelector('div.field-overlay');
+                    if (currentDiv) {
+                        const newTextarea = document.createElement('textarea');
+                        newTextarea.className = 'field-overlay w-full h-full';
+                        newTextarea.value = currentDiv.innerText;
+                        newTextarea.placeholder = 'Ketik...';
+                        
+                        newTextarea.addEventListener('blur', (e) => {
+                            if (e.target.value.trim() === '') {
+                                fields = fields.filter(f => f.id !== item.parent.id);
+                                item.parent.remove();
+                            }
+                        });
+                        newTextarea.addEventListener('input', (e) => {
+                            const found = fields.find(f => f.id === item.parent.id);
+                            if (found) found.value = e.target.value;
+                        });
+                        
+                        currentDiv.replaceWith(newTextarea);
+                    }
+                });
+                
+                btnDownload.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Kumpulkan & Unduh PDF';
+                btnDownload.disabled = false;
+            }
+        });
+
+    </script>
+</body>
+</html>
